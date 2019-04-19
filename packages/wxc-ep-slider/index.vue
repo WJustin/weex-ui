@@ -8,8 +8,19 @@
          @panstart="onPanStart"
          @panmove="onPanMove"
          @panend="onPanEnd"
-         @horizontalpan="onEpPanStart">
-      <div class="slider"
+         @horizontalpan="onEpPanStart"
+         @touchstart="onTouchStart"
+         @touchend="onTouchEnd">
+      <div v-if="isIOS"
+           class="slider"
+           v-for="(v,index) in cardList"
+           :ref="`card${index}_${sliderId}`"
+           :style="{transform: `scale(${index===currentIndex ? 1 : cardS.scale})`,left: `${index * (cardS.width+cardS.spacing)}px`,marginLeft:`${(containerS.width - cardS.width) / 2}px`,width: cardS.width+'px', height: cardS.height+'px'}"
+           @click="clickItemAt(index)">
+        <slot :name="`card${index}_${sliderId}`"></slot>
+      </div>
+      <div v-else
+           class="slider"
            v-for="(v,index) in cardList"
            :ref="`card${index}_${sliderId}`"
            :style="{transform: `scale(${index===currentIndex ? 1 : cardS.scale})`,left: `${index * (cardS.width+cardS.spacing)}px`,marginLeft:`${(containerS.width - cardS.width) / 2}px`,width: cardS.width+'px', height: cardS.height+'px'}">
@@ -30,6 +41,7 @@
 <script>
   const swipeBack = weex.requireModule('swipeBack');
   const animation = weex.requireModule('animation');
+  const page = weex.requireModule('page');
   import Utils from '../utils';
   import BindEnv from '../utils/bind-env';
   import Binding from 'weex-bindingx/lib/index.weex.js';
@@ -88,7 +100,9 @@
       startX: 0,
       startTime: 0,
       currentIndex: 0,
-      autoPlayTimer: null
+      autoPlayTimer: null,
+      isPan: false, //xxxxxxx判断当前是拖动还是点击事件
+      isIOS: Utils.env.isIOS()
     }),
     computed: {
       cardList () {
@@ -114,11 +128,32 @@
             anchor: sliderCtn.ref,
             eventType: 'pan'
           });
+        if (Utils.env.isAndroid()) { //xxxx适配安卓，安卓组件第一次出现不滑动的情况下，不能响应点击事件的问题
+          setTimeout(() => {
+            const sliderCtn = this.$refs[`sliderCtn_${this.sliderId}`];
+            this.bindExp(sliderCtn);
+          }, 0)       
+         }
         }
       }, 20);
       this.checkNeedAutoPlay();
     },
     methods: {
+      onTouchStart(e) {
+        this.isPan = false;
+        if (page) {
+            page.disableScroll();
+        }
+      },
+      onTouchEnd(e) {
+        if (page) {
+            page.enableScroll();
+        }
+      },
+      clickItemAt(index) {
+        this.$emit('click', { currentIndex: index, isPan: this.isPan });
+      },
+
       onPanStart (e) {
         if (BindEnv.supportsEB()) {
           return;
@@ -186,6 +221,7 @@
         }
       },
       onEpPanStart (e) {
+        this.isPan = true;
         if (BindEnv.supportsEB() && e.state === 'start') {
           this.clearAutoPlay();
           setTimeout(() => {
@@ -236,7 +272,11 @@
         let rightCardScale = this.cardS.scale;
         let leftCardScale = this.cardS.scale;
         const duration = (selectIndex === 0 && originIndex === this.cardLength - 1 && this.cardLength !== 2) ? 0.00001 : 300;
-        this.$emit('wxcEpSliderCurrentIndexSelected', { currentIndex: selectIndex });
+        if (this.isPan) {
+           this.$emit('wxcEpSliderCurrentIndexSelected', { currentIndex: selectIndex})
+        } else {
+           this.clickItemAt(selectIndex);
+        }
         if (originIndex < selectIndex) {
           currentCardScale = this.cardS.scale;
           rightCardScale = 1;
